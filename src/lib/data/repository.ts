@@ -1,6 +1,6 @@
 import type { Crane, Site, Tenant, User } from "@/lib/domain";
 
-/** Read-side data access. Implemented in-memory for the demo and by Prisma for SQL Server. */
+/** Read-side data access. Implemented in-memory for the demo and by Prisma for PostgreSQL. */
 export interface Repository {
   listTenants(): Promise<Tenant[]>;
   listSites(): Promise<Site[]>;

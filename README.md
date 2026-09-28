@@ -3,7 +3,7 @@
 A small but production-shaped slice of a B2B crane monitoring platform:
 **live telemetry, HLS video from site cameras, alarms with acknowledgement, and scope-based multi-tenant access control.**
 
-Stack: **Next.js 15 (App Router) · React 19 · Tailwind CSS v4 · TypeScript · Vitest (Vite) · SignalR client · hls.js · Prisma (SQL Server)**
+Stack: **Next.js 15 (App Router) · React 19 · Tailwind CSS v4 · TypeScript · Vitest (Vite) · SignalR client · hls.js · Prisma (PostgreSQL)**
 
 | Fleet overview | Crane detail |
 | --- | --- |
@@ -65,7 +65,7 @@ flowchart LR
   GW -->|HLS| MED[Media / CDN]
   IOT --> FN[Alarm rules<br/>Functions / Stream Analytics]
   FN --> SR[Azure SignalR]
-  FN --> DB[(Azure SQL<br/>via Prisma)]
+  FN --> DB[(PostgreSQL<br/>via Prisma)]
   SR -->|WebSocket| UI[Next.js dashboard]
   MED -->|HLS| UI
   DB --> UI
@@ -79,26 +79,26 @@ src/
   components/             client UI: fleet view, crane detail, HLS player, alarm list, SVG charts
   lib/
     auth/                 rbac (scopes, tenant isolation), signed token, session
-    data/                 Repository interface: in-memory + Prisma (SQL Server)
+    data/                 Repository interface: in-memory + Prisma (PostgreSQL)
     realtime/             transports (SSE, SignalR) + store/reducer
     telemetry/            simulator, alarm rules, hub
     access.ts             single place for tenant-scoped reads
     actions.ts            Server Actions (sign in/out, acknowledge alarm)
   middleware.ts           edge auth gate
-prisma/schema.prisma      SQL Server schema + seed
+prisma/schema.prisma      PostgreSQL schema + seed
 tests/                    Vitest unit tests
 ```
 
-## SQL Server (optional)
+## PostgreSQL (optional)
 
 ```bash
-docker compose up -d mssql
-export DATABASE_URL="sqlserver://localhost:1433;database=cranes;user=sa;password=Your_strong_Passw0rd;trustServerCertificate=true"
+docker compose up -d postgres
+export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/cranes"
 npm run db:generate && npm run db:push && npm run db:seed
 npm run dev
 ```
 
-With `DATABASE_URL` set, `getRepository()` switches to the Prisma implementation. Raw telemetry is intentionally not stored in SQL Server; the schema keeps hourly aggregates, and high-frequency data belongs in a time-series store (Azure Data Explorer / TimescaleDB).
+With `DATABASE_URL` set, `getRepository()` switches to the Prisma implementation. Raw telemetry is intentionally not stored in PostgreSQL; the schema keeps hourly aggregates, and high-frequency data belongs in a time-series store (Azure Data Explorer / TimescaleDB).
 
 ## Deploy
 

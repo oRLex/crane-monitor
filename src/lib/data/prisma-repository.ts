@@ -2,7 +2,7 @@ import type { Crane, Role, User } from "@/lib/domain";
 import type { Repository } from "./repository";
 
 /**
- * Prisma + SQL Server implementation. Loaded lazily (see ./index.ts) so the demo
+ * Prisma + PostgreSQL implementation. Loaded lazily (see ./index.ts) so the demo
  * runs without a database or a generated client.
  */
 export async function createPrismaRepository(): Promise<Repository> {

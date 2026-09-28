@@ -1,13 +1,13 @@
-# Optional: local SQL Server for the Prisma data source.
-#   docker compose up -d mssql
-#   DATABASE_URL="sqlserver://localhost:1433;database=cranes;user=sa;password=Your_strong_Passw0rd;trustServerCertificate=true" npm run db:push && npm run db:seed
+# Optional: local PostgreSQL for the Prisma data source.
+#   docker compose up -d postgres
+#   DATABASE_URL="postgresql://postgres:postgres@localhost:5432/cranes" npm run db:push && npm run db:seed
 services:
-  mssql:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+  postgres:
+    image: postgres:17
     environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "Your_strong_Passw0rd"
-    ports: ["1433:1433"]
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: cranes
+    ports: ["5432:5432"]
 
   app:
     build: .
