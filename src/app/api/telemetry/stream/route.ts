@@ -7,6 +7,8 @@ import type { RealtimeEvent } from "@/lib/domain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Vercel cuts serverless functions at this limit (seconds); EventSource reconnects automatically.
+export const maxDuration = 300;
 
 /**
  * Server-Sent Events endpoint: the built-in fallback transport.
