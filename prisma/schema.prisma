@@ -1,0 +1,91 @@
+// Prisma schema targeting Microsoft SQL Server (Azure SQL in production).
+// The app runs without a database by default (in-memory repository);
+// set DATABASE_URL and run `npm run db:push && npm run db:seed` to switch to SQL Server.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id      String  @id @db.NVarChar(64)
+  name    String  @db.NVarChar(200)
+  sites   Site[]
+  cranes  Crane[]
+  users   User[]
+}
+
+model Site {
+  id       String  @id @db.NVarChar(64)
+  name     String  @db.NVarChar(200)
+  city     String  @db.NVarChar(100)
+  tenantId String  @db.NVarChar(64)
+  tenant   Tenant  @relation(fields: [tenantId], references: [id])
+  cranes   Crane[]
+
+  @@index([tenantId])
+}
+
+model Crane {
+  id             String   @id @db.NVarChar(64)
+  name           String   @db.NVarChar(100)
+  model          String   @db.NVarChar(100)
+  serialNumber   String   @unique @db.NVarChar(64)
+  maxLoadT       Float
+  jibLengthM     Float
+  ratedMomentTm  Float
+  streamUrl      String?  @db.NVarChar(500)
+  siteId         String   @db.NVarChar(64)
+  tenantId       String   @db.NVarChar(64)
+  site           Site     @relation(fields: [siteId], references: [id])
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  alarms         Alarm[]
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([siteId])
+}
+
+model User {
+  id       String  @id @db.NVarChar(64)
+  email    String  @unique @db.NVarChar(200)
+  name     String  @db.NVarChar(200)
+  // admin | operator | customer_manager | customer_viewer
+  role     String  @db.NVarChar(32)
+  // null for platform-wide roles (admin, operator)
+  tenantId String? @db.NVarChar(64)
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+}
+
+model Alarm {
+  id             String    @id @db.NVarChar(64)
+  craneId        String    @db.NVarChar(64)
+  // wind | overload | offline
+  kind           String    @db.NVarChar(32)
+  // warning | critical
+  severity       String    @db.NVarChar(16)
+  message        String    @db.NVarChar(500)
+  raisedAt       DateTime
+  acknowledgedAt DateTime?
+  acknowledgedBy String?   @db.NVarChar(200)
+  crane          Crane     @relation(fields: [craneId], references: [id])
+
+  @@index([craneId, raisedAt])
+}
+
+// Raw telemetry is expected to live in a time-series store (Azure Data Explorer /
+// TimescaleDB). SQL Server keeps only aggregated history for reports.
+model TelemetryHourly {
+  craneId        String   @db.NVarChar(64)
+  hour           DateTime
+  maxLoadT       Float
+  maxMomentPct   Float
+  maxWindMs      Float
+  operatingMin   Int
+
+  @@id([craneId, hour])
+}

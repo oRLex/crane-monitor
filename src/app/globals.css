@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+/* Tailwind v4: design tokens live in CSS, no tailwind.config.js. */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --color-bg: #0b0e12;
+  --color-surface: #12161c;
+  --color-surface-2: #181d25;
+  --color-line: #252c37;
+  --color-ink: #e6e9ee;
+  --color-muted: #8b95a5;
+  --color-faint: #5a6473;
+
+  --color-crane: #f5c518; /* crane yellow — brand accent */
+  --color-ok: #3ecf8e;
+  --color-warn: #f59e0b;
+  --color-crit: #f0524f;
+  --color-off: #6b7280;
+
+  --radius-card: 0.75rem;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  html,
+  body {
+    background: var(--color-bg);
+    color: var(--color-ink);
+  }
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--color-crane) 35%, transparent);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-crane);
+    outline-offset: 2px;
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@utility card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@utility animate-pulse-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
