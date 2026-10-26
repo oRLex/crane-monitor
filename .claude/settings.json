@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(php artisan test*)",
+      "Bash(php artisan route:list*)",
+      "Bash(php artisan ai:eval --suite=retrieval*)",
+      "Bash(./vendor/bin/pint*)",
+      "Bash(./vendor/bin/phpstan*)",
+      "Bash(npm run typecheck*)",
+      "Bash(npm test*)",
+      "Bash(npm run build*)",
+      "Bash(npx vitest*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(gh pr view*)",
+      "Bash(gh run list*)",
+      "Bash(gh run view*)",
+      "Bash(docker compose ps*)",
+      "Bash(.claude/skills/dev-stack/scripts/stack.sh status)"
+    ],
+    "ask": [
+      "Bash(php artisan migrate*)",
+      "Bash(php artisan db:seed*)",
+      "Bash(php artisan ai:eval*)",
+      "Bash(composer require*)",
+      "Bash(npm install*)",
+      "Bash(git push*)"
+    ],
+    "deny": [
+      "Read(./api/.env)",
+      "Read(./api/.env.docker)",
+      "Read(./web/.env.local)",
+      "Bash(php artisan migrate:fresh*)",
+      "Bash(php artisan db:wipe*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [{ "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/session-context.sh", "timeout": 10 }]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [{ "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/protect-files.sh", "timeout": 10 }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [{ "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/format.sh", "timeout": 30, "statusMessage": "Formatting with Pint" }]
+      }
+    ]
+  }
+}

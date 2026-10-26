@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "cranewatch": {
+      "command": "php",
+      "args": ["api/artisan", "mcp:start", "cranewatch"],
+      "env": { "MCP_LOCAL_USER": "operator@demo.io" }
+    },
+    "laravel-boost": {
+      "command": "php",
+      "args": ["api/artisan", "boost:mcp"]
+    }
+  }
+}
