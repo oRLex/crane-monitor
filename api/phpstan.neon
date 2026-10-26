@@ -1,0 +1,16 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 8
+    paths:
+        - app
+        - routes
+        - database/seeders
+    tmpDir: storage/framework/cache/phpstan
+    ignoreErrors:
+        # Messages/tools are passed as API wire-format arrays (persisted and replayed verbatim);
+        # the SDK accepts them, but its PHPDoc only describes its own camelCase shapes.
+        -
+            identifier: argument.type
+            path: app/Ai/Llm/AnthropicLlmClient.php

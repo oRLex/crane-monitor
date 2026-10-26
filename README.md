@@ -1,113 +1,132 @@
-# CraneWatch — tower crane monitoring dashboard (demo)
+# CraneWatch — AI-first tower crane monitoring
 
-A small but production-shaped slice of a B2B crane monitoring platform:
-**live telemetry, HLS video from site cameras, alarms with acknowledgement, and scope-based multi-tenant access control.**
+A production-shaped B2B slice: live crane telemetry, alarms, HLS video and multi-tenant access control — plus AI features built the way they need to work in production: grounded in tenant-scoped data, cited, validated, budgeted and measurable.
 
-Stack: **Next.js 15 (App Router) · React 19 · Tailwind CSS v4 · TypeScript · Vitest (Vite) · SignalR client · hls.js · Prisma (PostgreSQL)**
+**Stack:** Laravel 13 API (PHP 8.3+, Sanctum, Reverb, Horizon, `laravel/mcp`, official Anthropic PHP SDK) · PostgreSQL + pgvector · Redis · RabbitMQ · Next.js 15 / React 19 / Tailwind v4 · PHPUnit, Larastan, Pint, Vitest · Docker, GitHub Actions. Deploy targets: **Laravel Cloud** (API) and **Vercel** (web).
 
 | Fleet overview | Crane detail |
 | --- | --- |
 | ![Fleet](docs/fleet.png) | ![Detail](docs/detail.png) |
 
-## Run it
+## What the AI does
+
+| Feature | How it works | What keeps it reliable |
+| --- | --- | --- |
+| **Assistant** (panel on every page, "Explain" on every alarm) | Claude with 6 tools: fleet status, crane status, hourly stats, alarms, documentation search, acknowledge. Bounded agent loop, streamed to the UI over SSE. | Tools run as the user (scopes + tenant scope); unauthorized tools are never advertised. State changes need a click from the user. Append-only history so prompt caching and replayed thinking stay valid. |
+| **RAG over manuals & site documents** | Markdown chunked by headings → embeddings (Voyage, 1024-d) in pgvector + Postgres full-text, merged with reciprocal rank fusion. Answers cite passages as `[D3§2]`, linked to the source section. | Tenant filter is in the SQL. Customers upload their own documents; nobody else can retrieve them. Ingestion is a queued, idempotent job. |
+| **Shift reports** | Numbers (lifts, peaks, alarm counts, ack latency) computed in SQL; the model writes summary, risk and recommendations as structured output. | Output validated against the facts (no invented events); identical inputs reuse the earlier report (hash of facts + prompt version + model). |
+| **MCP server** | The same tools over MCP: `/mcp` (Streamable HTTP, Sanctum token) or stdio (`php artisan mcp:start cranewatch`). | Same `ToolRegistry::call()` path as the assistant. A narrower token (e.g. read-only) can only reduce what the client sees. |
+
+Cross-cutting: usage ledger (tokens, cache reads, cost, latency, stop reason per call), daily token budget per tenant, per-user AI rate limit, server-side refusal fallback, retries/timeouts, an admin **AI usage** page, and an offline golden-set eval (`php artisan ai:eval`).
+
+**No API key? Everything still runs.** Without `ANTHROPIC_API_KEY` a deterministic mock LLM routes to the same tools and assembles answers from their results; without `VOYAGE_API_KEY` embeddings are feature-hashed. The demo, CI and the test suite use this mode.
+
+## Run it locally
+
+Requirements: PHP 8.3+ (pdo_pgsql, redis, sockets), Composer, Node 22, Docker.
 
 ```bash
-npm install
-npm run dev          # http://localhost:3000
-npm test             # unit tests (Vitest)
-npm run typecheck
+docker compose up -d postgres redis rabbitmq        # pgvector on :5433, redis on :6390
+
+cd api
+composer install && cp .env.example .env && php artisan key:generate
+php artisan migrate --seed                            # seeds tenants/cranes/users + 12 h of history
+php artisan knowledge:ingest --sync                   # index the bundled manuals
+# in separate terminals:
+PHP_CLI_SERVER_WORKERS=6 php artisan serve            # API on :8000
+php artisan reverb:start                              # WebSockets on :8080
+php artisan horizon                                   # queues: default, ai
+php artisan telemetry:consume                         # RabbitMQ -> alarms, live state, broadcasts
+php artisan telemetry:simulate                        # cranes -> RabbitMQ
+
+cd ../web
+npm install && cp .env.example .env.local && npm run dev   # http://localhost:3000
 ```
 
-No database or external services are needed: data comes from an in-memory repository and telemetry from a built-in simulator.
-On the sign-in page, pick a user — each one has a different role and tenant:
+Set `TELEMETRY_BUS=sync` to skip RabbitMQ (simulate processes in-process). Add `ANTHROPIC_API_KEY` to `api/.env` for real answers.
 
-| User | Role | Tenant | Sees | Video | Ack alarms |
-| --- | --- | --- | --- | :-: | :-: |
-| Olena | `admin` | all | 5 cranes | ✓ | ✓ |
-| Taras | `operator` | all | 5 cranes | ✓ | ✓ |
-| Iryna | `customer_manager` | BudInvest | 3 cranes | ✓ | ✓ |
-| Piotr | `customer_viewer` | Skyline | 2 cranes | — | — |
+Sign in as one of the demo users — each sees different data **and gets different AI answers and tools**:
 
-## What it demonstrates
+| User | Role | Tenant | Cranes | Video | Ack | Docs upload | AI usage |
+| --- | --- | --- | --- | :-: | :-: | :-: | :-: |
+| Olena | `admin` | all | 5 | ✓ | ✓ | ✓ (library) | ✓ |
+| Taras | `operator` | all | 5 | ✓ | ✓ | — | — |
+| Iryna | `customer_manager` | BudInvest | 3 | ✓ | ✓ | ✓ (own) | — |
+| Piotr | `customer_viewer` | Skyline | 2 | — | — | — | — |
 
-**Real-time telemetry.** A transport abstraction (`src/lib/realtime`) with two implementations behind one event contract (`snapshot` / `telemetry` / `alarm`):
-- `sse` (default) — Route Handler streaming Server-Sent Events from an in-process hub; heartbeats keep Azure Front Door / App Gateway from idling the connection.
-- `signalr` — `@microsoft/signalr` client for an ASP.NET Core hub behind Azure SignalR Service: automatic reconnect with backoff, re-subscribe + fresh snapshot after reconnect (groups are lost), bearer token via `accessTokenFactory` → `/api/realtime/token`.
+Checks:
 
-Switch with `NEXT_PUBLIC_REALTIME=signalr`. The UI reads state through `useSyncExternalStore` over a pure reducer, so components never touch the transport.
+```bash
+cd api && ./vendor/bin/pint --test && ./vendor/bin/phpstan && php artisan test && php artisan ai:eval
+cd web && npm run typecheck && npm test && npm run build
+```
 
-**Video.** `HlsPlayer` uses native HLS on Safari/iOS and lazy-loads hls.js elsewhere (kept out of the main bundle), recovers from network/media errors, and shows a retry on fatal ones. Public test streams stand in for camera feeds.
+### Connect an MCP client
 
-**RBAC and tenant isolation** (`src/lib/auth/rbac.ts`):
-- Roles are bundles of scopes (`cranes:read`, `telemetry:read`, `video:read`, `alarms:ack`, `tenants:all`); code checks scopes, never roles.
-- Tenant isolation is a separate axis, enforced in one place (`src/lib/access.ts`) for pages, APIs, the SSE stream and Server Actions.
-- Other tenants' cranes return **404, not 403**, so ids don't leak between customers.
-- Field-level: stream URLs never reach the browser without `video:read`.
-- Hiding a button is not authorization — `acknowledgeAlarm` re-checks scope and tenant on the server.
+```bash
+# Claude Code, local stdio, acting as a user:
+claude mcp add cranewatch --env MCP_LOCAL_USER=operator@demo.io -- php /path/to/api/artisan mcp:start cranewatch
 
-**Auth.** HMAC-signed, httpOnly session cookie using Web Crypto only, so the same code verifies it in Edge middleware and in Node handlers. The demo sign-in stands in for Entra ID / Azure AD B2C; the rest of the app only sees a `Principal`.
-
-**React 19 / Next 15 specifics.** Async `params`/`searchParams`/`cookies()`, Server Actions with `useActionState` (sign-in) and `useOptimistic` + `useTransition` (instant alarm ack with automatic rollback), `<Context value>` without `.Provider`, `use(Context)`.
-
-**Tailwind v4.** CSS-first configuration: design tokens in `@theme`, custom `@utility` classes, no `tailwind.config.js`.
-
-**Domain logic** is pure and tested: the telemetry simulator (seeded PRNG: lift cycles, gusty wind, near-overload lifts, link drop-outs), alarm rules (wind 14/20 m/s, load moment 90/100 %), alarm reconciliation (raise → escalate → clear, no duplicates), and status derivation.
+# Remote: get a read-only token and use it as a bearer header
+curl -s localhost:8000/api/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"manager@budinvest.demo","name":"mcp","abilities":["cranes:read","telemetry:read","alarms:read","docs:read"]}'
+claude mcp add --transport http cranewatch http://localhost:8000/mcp --header "Authorization: Bearer <token>"
+```
 
 ## Architecture
 
 ```mermaid
 flowchart LR
   subgraph Site
-    C[Crane controller] -->|MQTT| GW[Edge gateway]
-    CAM[Hook camera] -->|RTSP| GW
+    SIM[Cranes / edge gateway<br/>telemetry:simulate]
   end
-  GW -->|telemetry| IOT[Azure IoT Hub]
-  GW -->|HLS| MED[Media / CDN]
-  IOT --> FN[Alarm rules<br/>Functions / Stream Analytics]
-  FN --> SR[Azure SignalR]
-  FN --> DB[(PostgreSQL<br/>via Prisma)]
-  SR -->|WebSocket| UI[Next.js dashboard]
-  MED -->|HLS| UI
-  DB --> UI
+  SIM -->|AMQP topic crane.*| MQ[(RabbitMQ)]
+  MQ --> CON[telemetry:consume<br/>alarm rules]
+  CON --> PG[(PostgreSQL<br/>alarms, hourly aggregates,<br/>pgvector chunks)]
+  CON --> RD[(Redis<br/>live window, cache,<br/>budgets, queues)]
+  CON -->|broadcast| RV[Reverb<br/>private tenant channels]
+  API[Laravel API<br/>Sanctum · scopes · tenant scope] --> PG & RD
+  API --> AI[AI layer<br/>ToolRegistry · assistant · RAG · reports]
+  AI -->|Messages API| CL[Claude]
+  AI -->|embeddings| VO[Voyage]
+  HZ[Horizon workers<br/>ingest · reports] --> AI
+  MCP[MCP clients] -->|/mcp · stdio| AI
+  WEB[Next.js on Vercel<br/>proxy holds token in httpOnly cookie] --> API
+  RV -->|WebSocket| BR[Browser]
+  WEB --> BR
 ```
 
-In this demo the left half is replaced by `TelemetryHub` + `TelemetrySimulator`, and SignalR by SSE; the browser-side contract is the same.
-
 ```
-src/
-  app/                    routes: (dashboard) group, login, API route handlers
-  components/             client UI: fleet view, crane detail, HLS player, alarm list, SVG charts
-  lib/
-    auth/                 rbac (scopes, tenant isolation), signed token, session
-    data/                 Repository interface: in-memory + Prisma (PostgreSQL)
-    realtime/             transports (SSE, SignalR) + store/reducer
-    telemetry/            simulator, alarm rules, hub
-    access.ts             single place for tenant-scoped reads
-    actions.ts            Server Actions (sign in/out, acknowledge alarm)
-  middleware.ts           edge auth gate
-prisma/schema.prisma      PostgreSQL schema + seed
-tests/                    Vitest unit tests
+api/                         Laravel API
+  app/Domain                 Role -> Scope bundles, enums
+  app/Auth, Models/Concerns  TenantContext + BelongsToTenant global scope (isolation in one place)
+  app/Telemetry              simulator (ported from TS, bit-identical PRNG), AlarmEngine, processor, RabbitMQ/sync bus
+  app/Ai/Llm                 LlmClient: AnthropicLlmClient, FakeLlmClient
+  app/Ai/Tools               tools + ToolRegistry (shared by assistant and MCP)
+  app/Ai/Assistant           agent loop, prompts (versioned)
+  app/Ai/Knowledge           chunker, embeddings, hybrid search
+  app/Ai/Reports             facts (SQL), schema + validation
+  app/Mcp                    MCP server and tool adapter
+  resources/knowledge        bundled manuals; tenants/{id}/ for customer documents
+  resources/evals            golden sets for ai:eval
+web/                         Next.js app (UI only; all data and authorization from the API)
+  src/app/api/backend        same-origin proxy: adds the user's token, streams SSE
+  src/lib/realtime           Reverb (Pusher protocol) transport + pure reducer store
+  src/components/assistant   assistant panel, SSE client, safe Markdown renderer
+docs/adr                     decisions and their trade-offs
 ```
-
-## PostgreSQL (optional)
-
-```bash
-docker compose up -d postgres
-export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/cranes"
-npm run db:generate && npm run db:push && npm run db:seed
-npm run dev
-```
-
-With `DATABASE_URL` set, `getRepository()` switches to the Prisma implementation. Raw telemetry is intentionally not stored in PostgreSQL; the schema keeps hourly aggregates, and high-frequency data belongs in a time-series store (Azure Data Explorer / TimescaleDB).
 
 ## Deploy
 
-`Dockerfile` builds a standalone Next.js image (non-root, healthcheck on `/api/health`) for Azure Container Apps or App Service. CI (`.github/workflows/ci.yml`) runs Prisma validation, typecheck, tests and build.
+**API → Laravel Cloud.** Point the app at this repository with `api/` as the application root (if the root can't be set in your plan, move `api/` to the repo root — nothing in it depends on its location). Resources: Serverless Postgres (enable `vector`), Key-Value store (Redis-compatible), Reverb WebSocket cluster. RabbitMQ isn't a managed resource there: use CloudAMQP and set `RABBITMQ_URL=amqps://…`, or run with `TELEMETRY_BUS=sync`.
+- Deploy commands: `php artisan migrate --force`, `php artisan db:seed --force`, `php artisan knowledge:ingest`
+- Background processes: `php artisan horizon`, `php artisan telemetry:consume`, `php artisan telemetry:simulate`
+- Env: `APP_KEY`, `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY` (optional), `AI_DAILY_TOKEN_BUDGET`, `RABBITMQ_URL`, `TELEMETRY_BUS`; DB/KV/Reverb variables are injected by the resources.
 
-## Next steps for production
+**Web → Vercel.** Root directory `web`. Env: `API_URL=https://<app>.laravel.cloud/api`, `NEXT_PUBLIC_REVERB_KEY/HOST/PORT/SCHEME` from the Reverb cluster. The browser only talks to Vercel (pages + `/api/backend/*` proxy) and to Reverb, so the API needs no CORS.
 
-- Entra ID / B2C sign-in; tenant and roles from token claims.
-- Persist alarms and acknowledgements (audit trail) instead of the in-memory hub.
-- Multi-instance fan-out through Azure SignalR (the in-process hub is per instance).
-- Signed, short-lived HLS URLs per viewer; per-tenant video access policies.
-- Playwright E2E for the role matrix above; OpenTelemetry → Application Insights.
+## After launch
+
+What to watch: the **AI usage** page (cost per tenant, cache hit rate, p95 latency, `refusal`/`max_tokens` stop reasons), failed jobs in Horizon (reports that didn't validate, ingestion failures), and `ai.tool` log lines (tool, user, ok, ms). Before changing a prompt, tool description, chunking or model, run `php artisan ai:eval` and compare.
+
+Known limits / next steps: alarm hysteresis (wind hovering around a threshold raises and clears repeatedly — visible in the seeded history), Entra ID/OIDC instead of the demo sign-in, a time-series store for raw telemetry, multi-consumer processing (the consumer caches open alarms in memory), Playwright E2E for the role matrix, and an LLM-graded eval with a real key.

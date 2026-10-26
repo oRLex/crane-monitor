@@ -1,0 +1,5 @@
+vendor
+.env
+.env.docker
+storage/logs/*
+storage/framework/cache/*

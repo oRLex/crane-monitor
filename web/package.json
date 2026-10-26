@@ -1,0 +1,34 @@
+{
+  "name": "crane-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CraneWatch web app (Next.js) for the Laravel API: live telemetry over Reverb, HLS video, AI assistant, knowledge base, shift reports.",
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "hls.js": "^1.7.3",
+    "next": "15.5.26",
+    "pusher-js": "^8.6.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.8",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.2.4"
+  }
+}

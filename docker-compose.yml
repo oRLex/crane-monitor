@@ -1,17 +1,65 @@
-# Optional: local PostgreSQL for the Prisma data source.
-#   docker compose up -d postgres
-#   DATABASE_URL="postgresql://postgres:postgres@localhost:5432/cranes" npm run db:push && npm run db:seed
+# Local stack.
+#   docker compose up -d postgres redis rabbitmq reverb   # infra only, run api/web on the host
+#   docker compose --profile app up --build               # everything in containers
+#
+# Ports are offset (5433, 6390) so they don't clash with a locally installed Postgres/Redis.
+x-api: &api
+  build: ./api
+  env_file: ./api/.env.docker
+  depends_on: [postgres, redis, rabbitmq]
+  profiles: ["app"]
+
 services:
   postgres:
-    image: postgres:17
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: cranes
-    ports: ["5432:5432"]
+      POSTGRES_DB: cranewatch
+    ports: ["5433:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
 
-  app:
-    build: .
+  redis:
+    image: redis:7-alpine
+    ports: ["6390:6379"]
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    ports: ["5672:5672", "15672:15672"]
+
+  api:
+    <<: *api
+    command: sh -c "php artisan migrate --force && php artisan db:seed --force && php artisan knowledge:ingest && php artisan serve --host=0.0.0.0 --port=8000"
+    ports: ["8000:8000"]
+
+  reverb:
+    <<: *api
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    ports: ["8080:8080"]
+    profiles: []
+
+  horizon:
+    <<: *api
+    command: php artisan horizon
+
+  telemetry-simulate:
+    <<: *api
+    command: php artisan telemetry:simulate
+
+  telemetry-consume:
+    <<: *api
+    command: php artisan telemetry:consume
+
+  web:
+    build: ./web
     environment:
-      SESSION_SECRET: change-me-to-a-long-random-string-in-production
+      API_URL: http://api:8000/api
+      NEXT_PUBLIC_REVERB_HOST: localhost
+      NEXT_PUBLIC_REVERB_PORT: "8080"
+      NEXT_PUBLIC_REVERB_KEY: cranewatch-key
+      NEXT_PUBLIC_REVERB_SCHEME: http
     ports: ["3000:3000"]
+    depends_on: [api]
     profiles: ["app"]
+
+volumes:
+  pgdata:
