@@ -1,0 +1,14 @@
+[
+  {"query": "what to do when the load moment limiter trips", "expect": "Load moment limiter and overload procedure"},
+  {"query": "can we bypass the overload limiter to finish the lift", "expect": "Load moment limiter and overload procedure"},
+  {"query": "wind speed at which lifting must stop", "expect": "Wind limits and out-of-service procedure"},
+  {"query": "how to park the crane before a storm, slew brake", "expect": "Wind limits and out-of-service procedure"},
+  {"query": "alarm keeps raising and clearing every minute because of gusts", "expect": "Wind limits and out-of-service procedure"},
+  {"query": "gateway lost connection, crane offline", "expect": "Telemetry link loss (offline alarm)"},
+  {"query": "LTE signal drop-outs several times a day", "expect": "Telemetry link loss (offline alarm)"},
+  {"query": "Flat-top 172 maximum load at 40 m radius", "expect": "Flat-top 172 — operator manual extract"},
+  {"query": "Hammerhead 280 parking radius out of service", "expect": "Hammerhead 280 — operator manual extract"},
+  {"query": "luffing jib angle in storm wind", "expect": "Luffing 357 — operator manual extract"},
+  {"query": "restart checks after high wind", "expect": "Wind limits and out-of-service procedure"},
+  {"query": "underestimated load weight wet timber", "expect": "Load moment limiter and overload procedure"}
+]
