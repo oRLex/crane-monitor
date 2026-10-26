@@ -116,6 +116,22 @@ web/                         Next.js app (UI only; all data and authorization fr
 docs/adr                     decisions and their trade-offs
 ```
 
+## Working on this repo with AI agents
+
+The repo is set up for Claude Code (and other agents via `AGENTS.md`):
+
+| Piece | Where | What it does |
+| --- | --- | --- |
+| Project instructions | `AGENTS.md` (shared standard), `CLAUDE.md` (imports it + Claude specifics) | Commands, invariants, workflow — loaded every session |
+| Rules | `.claude/rules/*.md` | Path-scoped conventions (Laravel API, AI layer, database, tests, web) — load only when matching files are touched |
+| Skills | `.claude/skills/*` | Procedures: `/verify`, `/add-ai-tool`, `/add-api-endpoint`, `/ai-eval`, `/prompt-change`, `/dev-stack`, `/deploy-check` |
+| Subagents | `.claude/agents/*` | `tenant-security-reviewer`, `ai-quality-reviewer` (read-only), `laravel-test-writer` |
+| Hooks | `.claude/settings.json` + `.claude/hooks/` | Pint after PHP edits; block edits to `.env`, lock files and committed migrations; local stack status at session start |
+| Permissions | `.claude/settings.json` | Checks run without prompts; migrations/pushes ask; `migrate:fresh`, force-push and reading `.env` are denied |
+| MCP | `.mcp.json` | `cranewatch` (this app's own tools, as the operator user) and `laravel-boost` (schema, queries, logs, Laravel docs) |
+
+Personal overrides go in `.claude/settings.local.json` and `CLAUDE.local.md` (gitignored).
+
 ## Deploy
 
 **API → Laravel Cloud.** Point the app at this repository with `api/` as the application root (if the root can't be set in your plan, move `api/` to the repo root — nothing in it depends on its location). Resources: Serverless Postgres (enable `vector`), Key-Value store (Redis-compatible), Reverb WebSocket cluster. RabbitMQ isn't a managed resource there: use CloudAMQP and set `RABBITMQ_URL=amqps://…`, or run with `TELEMETRY_BUS=sync`.
@@ -124,6 +140,17 @@ docs/adr                     decisions and their trade-offs
 - Env: `APP_KEY`, `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY` (optional), `AI_DAILY_TOKEN_BUDGET`, `RABBITMQ_URL`, `TELEMETRY_BUS`; DB/KV/Reverb variables are injected by the resources.
 
 **Web → Vercel.** Root directory `web`. Env: `API_URL=https://<app>.laravel.cloud/api`, `NEXT_PUBLIC_REVERB_KEY/HOST/PORT/SCHEME` from the Reverb cluster. The browser only talks to Vercel (pages + `/api/backend/*` proxy) and to Reverb, so the API needs no CORS.
+
+Troubleshooting:
+
+| Symptom | Check |
+| --- | --- |
+| Stuck on "Connecting…", no Live badge | Vercel domain missing from the Reverb app's **Allowed origins**, or wrong `NEXT_PUBLIC_REVERB_*` |
+| Live, but values don't change | `telemetry:simulate` not running, or the app cluster is hibernating |
+| Reports/documents stay `queued`/`pending` | No `horizon` process, or `QUEUE_CONNECTION` isn't `redis` |
+| Postgres `too many clients` | Use the `-pooler` host in `DB_HOST` |
+| Vercel: `NEXT_NO_VERSION` | Root Directory isn't set to `web` |
+| Background processes run twice | App cluster has more than one replica — background processes run on every replica |
 
 ## After launch
 
