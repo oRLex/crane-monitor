@@ -26,15 +26,15 @@ class RunAiEval extends Command
     public function handle(KnowledgeSearch $search, AssistantService $assistant, LlmClient $llm): int
     {
         $suite = (string) $this->option('suite');
-        $ok = true;
+        $results = [];
         if (in_array($suite, ['retrieval', 'all'], true)) {
-            $ok = $this->retrieval($search) && $ok;
+            $results[] = $this->retrieval($search);
         }
         if (in_array($suite, ['assistant', 'all'], true)) {
-            $ok = $this->assistant($assistant, $llm) && $ok;
+            $results[] = $this->assistant($assistant, $llm);
         }
 
-        return $ok ? self::SUCCESS : self::FAILURE;
+        return in_array(false, $results, true) ? self::FAILURE : self::SUCCESS;
     }
 
     private function retrieval(KnowledgeSearch $search): bool
