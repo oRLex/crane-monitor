@@ -7,15 +7,11 @@ export interface RealtimeTransport {
 }
 
 export interface TransportOptions {
-  craneIds?: string[];
+  /** Private channels to join: "tenant.{id}" for customers, "platform" for tenants:all roles. */
+  channels: string[];
 }
 
-/** Picks the transport from NEXT_PUBLIC_REALTIME ("sse" | "signalr"). */
-export async function createTransport(options: TransportOptions = {}): Promise<RealtimeTransport> {
-  if (process.env.NEXT_PUBLIC_REALTIME === "signalr") {
-    const { createSignalRTransport } = await import("./signalr");
-    return createSignalRTransport(process.env.NEXT_PUBLIC_SIGNALR_HUB_URL ?? "/hubs/telemetry", options);
-  }
-  const { createSseTransport } = await import("./sse");
-  return createSseTransport(options);
+export async function createTransport(options: TransportOptions): Promise<RealtimeTransport> {
+  const { createReverbTransport } = await import("./reverb");
+  return createReverbTransport(options);
 }

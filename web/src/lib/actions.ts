@@ -1,15 +1,16 @@
 "use server";
 
-import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
-import { assertCan, canAccessTenant, ForbiddenError } from "@/lib/auth/rbac";
-import { endSession, getPrincipal, startSession } from "@/lib/auth/session";
-import { getRepository } from "@/lib/data";
-import { getHub } from "@/lib/telemetry";
+import { api, ApiError } from "@/lib/api/server";
+import { TOKEN_COOKIE, TOKEN_TTL_SEC } from "@/lib/api/session";
+import type { Alarm, ShiftReport } from "@/lib/domain";
 
 export interface FormState {
   error?: string;
+  ok?: boolean;
 }
 
 const loginSchema = z.object({
@@ -21,49 +22,84 @@ const loginSchema = z.object({
     .catch("/"),
 });
 
-/**
- * Demo sign-in: pick a seeded user (no password). In production this is the
- * Entra ID / Azure AD B2C callback, which produces the same Principal.
- */
+/** Demo sign-in: exchange a seeded user for a Sanctum token kept in an httpOnly cookie. */
 export async function signIn(_prev: FormState, formData: FormData): Promise<FormState> {
   const parsed = loginSchema.safeParse({ email: formData.get("email"), next: formData.get("next") ?? "/" });
   if (!parsed.success) return { error: "Choose a user to continue" };
 
-  const user = await (await getRepository()).findUserByEmail(parsed.data.email);
-  if (!user) return { error: "Unknown user" };
-
-  await startSession({ sub: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenantId });
+  try {
+    const { token } = await api<{ token: string }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: parsed.data.email, name: "web" }),
+    });
+    (await cookies()).set(TOKEN_COOKIE, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: TOKEN_TTL_SEC,
+    });
+  } catch (e) {
+    return { error: e instanceof ApiError ? e.message : "Sign-in failed" };
+  }
   redirect(parsed.data.next);
 }
 
 export async function signOut(): Promise<void> {
-  await endSession();
+  await api("/auth/logout", { method: "POST" }).catch(() => undefined);
+  (await cookies()).delete(TOKEN_COOKIE);
   redirect("/login");
 }
 
-export type AckResult = { ok: true; acknowledgedAt: number; acknowledgedBy: string } | { ok: false; error: string };
-
-const ackSchema = z.object({ alarmId: z.string().min(1).max(100) });
+export type AckResult = { ok: true; alarm: Alarm } | { ok: false; error: string };
 
 export async function acknowledgeAlarm(alarmId: string): Promise<AckResult> {
-  const parsed = ackSchema.safeParse({ alarmId });
-  if (!parsed.success) return { ok: false, error: "Invalid alarm id" };
-
+  if (!z.string().min(1).max(40).safeParse(alarmId).success) return { ok: false, error: "Invalid alarm id" };
   try {
-    const principal = await getPrincipal();
-    // Re-check on the server: hiding the button in the UI is not authorization.
-    assertCan(principal, "alarms:ack");
-
-    const hub = await getHub();
-    const alarm = hub.getAlarm(parsed.data.alarmId);
-    const crane = alarm && (await (await getRepository()).getCrane(alarm.craneId));
-    if (!alarm || !crane || !canAccessTenant(principal, crane.tenantId)) return { ok: false, error: "Alarm not found" };
-
-    const updated = hub.acknowledge(alarm.id, principal.name);
-    revalidatePath(`/cranes/${crane.id}`);
-    return { ok: true, acknowledgedAt: updated!.acknowledgedAt!, acknowledgedBy: updated!.acknowledgedBy! };
+    // The API re-checks scope and tenant: hiding the button is not authorization.
+    const { alarm } = await api<{ alarm: Alarm }>(`/alarms/${encodeURIComponent(alarmId)}/ack`, { method: "POST", allow404: true });
+    return { ok: true, alarm };
   } catch (e) {
-    if (e instanceof ForbiddenError) return { ok: false, error: "You are not allowed to acknowledge alarms" };
+    if (e instanceof ApiError && e.status === 403) return { ok: false, error: "You are not allowed to acknowledge alarms" };
+    if (e instanceof ApiError && e.status === 404) return { ok: false, error: "Alarm not found" };
     throw e;
   }
+}
+
+const reportSchema = z.object({ craneId: z.string().min(1).max(40), hours: z.coerce.number().int().min(1).max(24) });
+
+export async function requestReport(_prev: FormState, formData: FormData): Promise<FormState> {
+  const parsed = reportSchema.safeParse({ craneId: formData.get("craneId"), hours: formData.get("hours") });
+  if (!parsed.success) return { error: "Choose a crane and a period" };
+  try {
+    await api<{ report: ShiftReport }>("/reports", {
+      method: "POST",
+      body: JSON.stringify({ crane_id: parsed.data.craneId, hours: parsed.data.hours }),
+    });
+  } catch (e) {
+    return { error: e instanceof ApiError ? e.message : "Could not queue the report" };
+  }
+  revalidatePath("/reports");
+  return { ok: true };
+}
+
+const docSchema = z.object({ title: z.string().trim().min(3).max(160), content: z.string().trim().min(20).max(200_000) });
+
+export async function uploadDocument(_prev: FormState, formData: FormData): Promise<FormState> {
+  const file = formData.get("file");
+  const content = file instanceof File && file.size > 0 ? await file.text() : formData.get("content");
+  const parsed = docSchema.safeParse({ title: formData.get("title"), content });
+  if (!parsed.success) return { error: "Add a title and at least a paragraph of text (Markdown or plain text)" };
+  try {
+    await api("/knowledge/documents", { method: "POST", body: JSON.stringify(parsed.data) });
+  } catch (e) {
+    return { error: e instanceof ApiError ? e.message : "Upload failed" };
+  }
+  revalidatePath("/knowledge");
+  return { ok: true };
+}
+
+export async function deleteDocument(id: number): Promise<void> {
+  await api(`/knowledge/documents/${id}`, { method: "DELETE" });
+  revalidatePath("/knowledge");
 }

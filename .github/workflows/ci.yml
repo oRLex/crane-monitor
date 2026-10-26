@@ -2,20 +2,65 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 
 jobs:
-  check:
+  api:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cranewatch_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: pdo_pgsql, redis, sockets, bcmath
+          coverage: none
+      - uses: actions/cache@v4
+        with:
+          path: api/vendor
+          key: composer-${{ hashFiles('api/composer.lock') }}
+      - run: composer install --no-interaction --prefer-dist
+      - run: cp .env.example .env && php artisan key:generate
+      - run: ./vendor/bin/pint --test
+      - run: ./vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+      - run: php artisan test
+      # Retrieval quality gate: runs offline (hashed embeddings, mock LLM).
+      - run: php artisan migrate --force --seed && php artisan knowledge:ingest --sync && php artisan ai:eval --suite=retrieval
+        env:
+          DB_DATABASE: cranewatch_test
+          CACHE_STORE: array
+          QUEUE_CONNECTION: sync
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: web/package-lock.json
       - run: npm ci
-      - run: npx prisma validate
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

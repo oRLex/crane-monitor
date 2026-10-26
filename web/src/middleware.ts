@@ -1,20 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, sessionSecret } from "@/lib/auth/config";
-import { verifyToken } from "@/lib/auth/token";
+import { TOKEN_COOKIE } from "@/lib/api/session";
 
 /**
- * Edge gate: unauthenticated users are redirected to /login (pages) or get 401 (API).
- * Fine-grained scope and tenant checks happen next to the data in route handlers,
- * server components and server actions.
+ * Edge gate: without a token cookie, pages redirect to /login. Whether the token is valid
+ * and what it may do is decided by the Laravel API on every call.
  */
-export async function middleware(req: NextRequest) {
-  const session = await verifyToken(req.cookies.get(SESSION_COOKIE)?.value, sessionSecret());
+export function middleware(req: NextRequest) {
+  const hasToken = Boolean(req.cookies.get(TOKEN_COOKIE)?.value);
   const { pathname } = req.nextUrl;
 
-  if (pathname === "/login") {
-    return session ? NextResponse.redirect(new URL("/", req.url)) : NextResponse.next();
-  }
-  if (!session) {
+  if (pathname === "/login") return hasToken ? NextResponse.redirect(new URL("/", req.url)) : NextResponse.next();
+  if (!hasToken) {
     if (pathname.startsWith("/api/")) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     const url = new URL("/login", req.url);
     if (pathname !== "/") url.searchParams.set("next", pathname);

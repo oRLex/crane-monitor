@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
 import { acknowledgeAlarm } from "@/lib/actions";
 import type { Alarm } from "@/lib/domain";
+import { useAssistant } from "./assistant/assistant-provider";
 import { SeverityBadge } from "./ui/status";
 
 type Optimistic = { id: string; by: string };
@@ -11,17 +12,25 @@ type Optimistic = { id: string; by: string };
 export function AlarmList({
   alarms,
   canAck,
+  canAsk = false,
   craneNames,
   userName,
   emptyText = "No alarms",
 }: {
   alarms: Alarm[];
   canAck: boolean;
+  canAsk?: boolean;
   craneNames?: Record<string, string>;
   userName: string;
   emptyText?: string;
 }) {
   const [pending, startTransition] = useTransition();
+  const assistant = useAssistant();
+  const explain = (a: Alarm) =>
+    void assistant.open(
+      { alarmId: a.id, craneId: a.craneId, title: `${craneNames?.[a.craneId] ?? a.craneId}: ${a.message}` },
+      `Explain this ${a.severity} ${a.kind} alarm on ${a.craneId} ("${a.message}"): what happened, the likely cause from the data, and what the procedure says we should do.`,
+    );
   const [error, setError] = useState<string | null>(null);
   // React 19: show the ack instantly, roll back automatically if the action fails.
   const [optimistic, addOptimistic] = useOptimistic(alarms, (current, ack: Optimistic) =>
@@ -62,6 +71,16 @@ export function AlarmList({
                   {a.acknowledgedAt && ` · ack by ${a.acknowledgedBy}`}
                 </p>
               </div>
+              {canAsk && (
+                <button
+                  type="button"
+                  onClick={() => explain(a)}
+                  className="shrink-0 rounded-md border border-line px-2.5 py-1 text-xs text-muted transition hover:border-crane hover:text-crane"
+                  title="Ask the AI assistant to explain this alarm"
+                >
+                  Explain
+                </button>
+              )}
               {canAck && !a.acknowledgedAt && (
                 <button
                   type="button"

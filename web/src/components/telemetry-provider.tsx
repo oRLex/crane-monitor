@@ -7,18 +7,17 @@ import { createTransport } from "@/lib/realtime/transport";
 const StoreContext = createContext<TelemetryStore | null>(null);
 
 /**
- * Owns the single real-time connection for the dashboard.
- * The server passes only crane ids the principal may see; the server re-applies
- * the same filter on its side, so this is a UX hint, not a security boundary.
+ * Owns the single real-time connection for the dashboard. Channel names are derived from the
+ * profile; whether the user may actually join them is decided by the API's channel auth.
  */
-export function TelemetryProvider({ craneIds, children }: { craneIds: string[]; children: React.ReactNode }) {
+export function TelemetryProvider({ channels, children }: { channels: string[]; children: React.ReactNode }) {
   const [store] = useState(() => new TelemetryStore());
-  const key = craneIds.join(",");
+  const key = channels.join(",");
 
   useEffect(() => {
     let disconnect: (() => void) | undefined;
     let cancelled = false;
-    void createTransport({ craneIds: key ? key.split(",") : [] }).then((transport) => {
+    void createTransport({ channels: key ? key.split(",") : [] }).then((transport) => {
       if (!cancelled) disconnect = transport.connect(store.dispatch, store.setConnection);
     });
     return () => {

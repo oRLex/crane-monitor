@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { Crane, CraneStatus, Site } from "@/lib/domain";
-import { deriveStatus, THRESHOLDS } from "@/lib/telemetry/alarms";
+import { deriveStatus, THRESHOLDS } from "@/lib/status";
 import { AlarmList } from "./alarm-list";
 import { useTelemetry } from "./telemetry-provider";
 import { MomentBar, SlewGauge, Sparkline } from "./ui/charts";
@@ -15,11 +15,13 @@ export function FleetView({
   cranes,
   sites,
   canAck,
+  canAsk,
   userName,
 }: {
   cranes: Crane[];
   sites: Site[];
   canAck: boolean;
+  canAsk: boolean;
   userName: string;
 }) {
   const latest = useTelemetry((s) => s.latest);
@@ -190,6 +192,7 @@ export function FleetView({
           <AlarmList
             alarms={activeAlarms}
             canAck={canAck}
+            canAsk={canAsk}
             craneNames={craneNames}
             userName={userName}
             emptyText="All clear — no active alarms"

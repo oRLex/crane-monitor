@@ -8,7 +8,7 @@ interface UserOption {
   name: string;
   role: string;
   tenant: string;
-  scopes: string[];
+  hint: string;
 }
 
 export function LoginForm({ users, next }: { users: UserOption[]; next: string }) {
@@ -32,13 +32,7 @@ export function LoginForm({ users, next }: { users: UserOption[]; next: string }
                 <span className="text-xs text-muted">{u.tenant}</span>
               </span>
               <span className="block text-sm text-crane">{u.role}</span>
-              <span className="mt-2 flex flex-wrap gap-1">
-                {u.scopes.map((s) => (
-                  <span key={s} className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted">
-                    {s}
-                  </span>
-                ))}
-              </span>
+              <span className="mt-1 block text-xs text-muted">{u.hint}</span>
             </span>
           </label>
         ))}

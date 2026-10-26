@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-/** Liveness probe for Azure App Service / Container Apps. */
+/** Liveness probe (Vercel / container healthcheck). */
 export function GET() {
   return Response.json({ status: "ok", ts: new Date().toISOString() });
 }

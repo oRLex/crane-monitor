@@ -1,4 +1,4 @@
-// Core domain types shared by server and client code.
+// Wire types of the Laravel API, shared by server and client components.
 
 export type Role = "admin" | "operator" | "customer_manager" | "customer_viewer";
 
@@ -8,11 +8,22 @@ export type Scope =
   | "video:read"
   | "alarms:read"
   | "alarms:ack"
+  | "docs:read"
+  | "docs:write"
+  | "reports:write"
+  | "ai:use"
+  | "ai:admin"
   | "tenants:all";
 
-export interface Tenant {
-  id: string;
+export interface Profile {
+  id: number;
   name: string;
+  email: string;
+  role: Role;
+  roleLabel: string;
+  tenantId: string | null;
+  tenantName: string | null;
+  scopes: Scope[];
 }
 
 export interface Site {
@@ -31,18 +42,11 @@ export interface Crane {
   jibLengthM: number;
   /** Rated load moment, tonne-metres. */
   ratedMomentTm: number;
+  /** null unless the user has video:read (enforced by the API). */
   streamUrl: string | null;
   siteId: string;
   tenantId: string;
-}
-
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: Role;
-  /** null for platform-wide roles. */
-  tenantId: string | null;
+  site?: Site;
 }
 
 export type CraneStatus = "operating" | "idle" | "alarm" | "offline";
@@ -76,8 +80,52 @@ export interface Alarm {
   clearedAt: number | null;
 }
 
-/** Messages pushed over the real-time channel (SSE or SignalR). */
+/** Messages applied to the real-time store (from the snapshot endpoint and Reverb events). */
 export type RealtimeEvent =
   | { type: "snapshot"; points: TelemetryPoint[]; history: Record<string, TelemetryPoint[]>; alarms: Alarm[] }
   | { type: "telemetry"; points: TelemetryPoint[] }
   | { type: "alarm"; alarm: Alarm };
+
+export interface ShiftReport {
+  id: string;
+  craneId: string;
+  craneName: string;
+  periodStart: string;
+  periodEnd: string;
+  status: "queued" | "running" | "ready" | "failed";
+  report: {
+    summary: string;
+    risk_level: "low" | "medium" | "high";
+    highlights: string[];
+    safety_events: { time: string; kind: AlarmKind; severity: AlarmSeverity; description: string }[];
+    recommendations: string[];
+  } | null;
+  facts: Record<string, unknown> | null;
+  error: string | null;
+  model: string | null;
+  createdAt: string;
+}
+
+export interface KnowledgeDocument {
+  id: number;
+  tenant_id: string | null;
+  title: string;
+  source: string | null;
+  status: "pending" | "indexed" | "failed";
+  error: string | null;
+  chunk_count: number;
+  embedding_model: string | null;
+  updated_at: string;
+}
+
+export interface Passage {
+  citation: string;
+  document_id: number;
+  document: string;
+  section: string;
+  text: string;
+  score: number;
+  source: string;
+}
+
+export const can = (profile: Pick<Profile, "scopes"> | null | undefined, scope: Scope) => !!profile?.scopes.includes(scope);

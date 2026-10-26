@@ -2,8 +2,10 @@
 
 import { useMemo } from "react";
 import type { Crane, Site } from "@/lib/domain";
-import { deriveStatus, THRESHOLDS } from "@/lib/telemetry/alarms";
+import { deriveStatus, THRESHOLDS } from "@/lib/status";
+import Link from "next/link";
 import { AlarmList } from "./alarm-list";
+import { useAssistant } from "./assistant/assistant-provider";
 import { HlsPlayer } from "./hls-player";
 import { useTelemetry } from "./telemetry-provider";
 import { LineChart, SlewGauge } from "./ui/charts";
@@ -17,6 +19,8 @@ export function CraneDetail({
   streamUrl,
   canVideo,
   canAck,
+  canAsk,
+  canReport,
   userName,
 }: {
   crane: Crane;
@@ -25,12 +29,15 @@ export function CraneDetail({
   streamUrl: string | null;
   canVideo: boolean;
   canAck: boolean;
+  canAsk: boolean;
+  canReport: boolean;
   userName: string;
 }) {
   const point = useTelemetry((s) => s.latest[crane.id]);
   const history = useTelemetry((s) => s.history[crane.id] ?? EMPTY);
   const allAlarms = useTelemetry((s) => s.alarms);
   const connection = useTelemetry((s) => s.connection);
+  const assistant = useAssistant();
 
   const alarms = useMemo(() => allAlarms.filter((a) => a.craneId === crane.id), [allAlarms, crane.id]);
   const status = deriveStatus(point, alarms);
@@ -52,7 +59,23 @@ export function CraneDetail({
             {crane.model} · S/N {crane.serialNumber} · {site?.name}, {site?.city}
           </p>
         </div>
-        <ConnectionDot state={connection} />
+        <div className="flex items-center gap-3">
+          {canReport && (
+            <Link href={`/reports?crane=${crane.id}`} className="rounded-md border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">
+              Shift report
+            </Link>
+          )}
+          {canAsk && (
+            <button
+              type="button"
+              onClick={() => void assistant.open({ craneId: crane.id, title: `About ${crane.name}` })}
+              className="rounded-md border border-crane/50 px-3 py-1.5 text-sm text-crane hover:bg-crane/10"
+            >
+              Ask about {crane.name}
+            </button>
+          )}
+          <ConnectionDot state={connection} />
+        </div>
       </header>
 
       <dl className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
@@ -148,7 +171,14 @@ export function CraneDetail({
         <h2 id="crane-alarms" className="border-b border-line px-4 py-3 font-semibold">
           Alarm log
         </h2>
-        <AlarmList alarms={alarms.slice(0, 50)} canAck={canAck} userName={userName} emptyText="No alarms in this session" />
+        <AlarmList
+          alarms={alarms.slice(0, 50)}
+          canAck={canAck}
+          canAsk={canAsk}
+          craneNames={{ [crane.id]: crane.name }}
+          userName={userName}
+          emptyText="No alarms in the last 6 hours"
+        />
       </section>
     </div>
   );
