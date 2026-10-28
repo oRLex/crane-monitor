@@ -48,6 +48,44 @@ jobs:
           CACHE_STORE: array
           QUEUE_CONNECTION: sync
 
+  api-wasm32:
+    # Production runs on Wasmer Edge: PHP 8.3 compiled to 32-bit WebAssembly, where epoch-ms
+    # values and 32-bit hashes overflow `int`. Same suite, on that runtime.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cranewatch_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: pdo_pgsql, sockets, bcmath, pcntl
+          coverage: none
+      # The Wasmer runtime has no pcntl/sockets/redis; only workers that don't run there use them.
+      - run: composer config platform-check false && composer install --no-interaction --prefer-dist
+      - run: cp .env.example .env && php artisan key:generate
+      - name: Install Wasmer
+        run: |
+          mkdir -p "$HOME/.wasmer"
+          curl -fsSL https://github.com/wasmerio/wasmer/releases/download/v7.5.0/wasmer-linux-amd64.tar.gz | tar -xz -C "$HOME/.wasmer" bin/wasmer
+          echo "$HOME/.wasmer/bin" >> "$GITHUB_PATH"
+      - name: PHPUnit on php/php from wasmer.toml
+        run: |
+          php_pkg="php/php@$(sed -n 's/^"php\/php" = "=\([^"]*\)".*/\1/p' wasmer.toml)"
+          wasmer run "$php_pkg" --net --volume .:/app \
+            --env DB_HOST=127.0.0.1 --env DB_PORT=5432 --env DB_USERNAME=postgres --env DB_PASSWORD=postgres \
+            -- /app/vendor/bin/phpunit -c /app/phpunit.xml --do-not-cache-result
+
   web:
     runs-on: ubuntu-latest
     defaults:

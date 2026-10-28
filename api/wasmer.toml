@@ -1,0 +1,25 @@
+# Wasmer package for the API (see deploy/wasmer/README.md).
+[package]
+entrypoint = "run"
+
+[dependencies]
+"php/php" = "=8.3.403"  # 8.3.403+ includes pdo_pgsql; "=8.3.4" from the Wasmer guide does not
+
+[fs]
+"/app" = "."
+
+# HTTP: PHP's built-in server, the same thing `php artisan serve` runs.
+[[command]]
+name = "run"
+module = "php/php:php"
+runner = "wasi"
+[command.annotations.wasi]
+main-args = ["-S", "0.0.0.0:8080", "-t", "/app/public", "/app/deploy/wasmer/router.php"]
+
+# Artisan, for jobs in app.yaml: `wasmer run . --command artisan -- migrate`.
+[[command]]
+name = "artisan"
+module = "php/php:php"
+runner = "wasi"
+[command.annotations.wasi]
+main-args = ["/app/artisan"]

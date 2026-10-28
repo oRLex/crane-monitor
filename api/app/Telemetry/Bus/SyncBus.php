@@ -18,6 +18,14 @@ class SyncBus implements TelemetryBus
         $processor->process($points);
     }
 
+    /** Writes what the processor still holds (hourly aggregates); for bounded runs. */
+    public function flush(): void
+    {
+        /** @var TelemetryProcessor $processor */
+        $processor = ($this->processor)();
+        $processor->flush();
+    }
+
     public function consume(Closure $handler): void
     {
         throw new LogicException('The sync telemetry bus has no consumer; telemetry:simulate processes in-process.');

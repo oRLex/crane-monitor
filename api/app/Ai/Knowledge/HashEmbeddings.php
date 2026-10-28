@@ -38,11 +38,17 @@ class HashEmbeddings implements Embeddings
         return array_values(array_map(fn ($x) => $x / $norm, $v));
     }
 
-    /** @param array<int, float> $v */
+    /**
+     * Bit 31 of the hash picks the sign, the low 31 bits the slot. crc32() is negative on
+     * 32-bit PHP (Wasmer), so the bits are read without relying on a 64-bit int; for a
+     * power-of-two size this matches the original `$h % size` on 64-bit.
+     *
+     * @param  array<int, float>  $v
+     */
     private function add(array &$v, string $feature, float $weight): void
     {
         $h = crc32($feature);
-        $v[$h % $this->dimensions] += ($h & 0x80000000) ? -$weight : $weight;
+        $v[($h & 0x7FFFFFFF) % $this->dimensions] += (($h >> 31) & 1) === 1 ? -$weight : $weight;
     }
 
     private function stem(string $w): string

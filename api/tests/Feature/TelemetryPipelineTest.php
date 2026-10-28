@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Events\AlarmChanged;
 use App\Events\TelemetryBatch;
 use App\Models\Alarm;
+use App\Models\Crane;
 use App\Telemetry\Bus\TelemetryBus;
 use App\Telemetry\TelemetryPoint;
 use App\Telemetry\TelemetryProcessor;
@@ -50,6 +51,17 @@ class TelemetryPipelineTest extends TestCase
         $snapshot = $this->getAs(self::VIEWER, '/api/realtime/snapshot')->assertOk()->json();
         $this->assertSame(['c-201'], array_column($snapshot['points'], 'craneId'));
         $this->assertSame(['c-201', 'c-202'], array_keys($snapshot['history']));
+    }
+
+    public function test_a_bounded_simulator_run_flushes_its_hourly_aggregates(): void
+    {
+        // On Wasmer, telemetry:simulate runs as a short cron job; nothing may be left unflushed.
+        Event::fake();
+        config(['telemetry.tick_ms' => 1]);
+
+        $this->artisan('telemetry:simulate', ['--ticks' => 3, '--seed' => 1])->assertSuccessful();
+
+        $this->assertSame(3 * Crane::query()->count(), (int) DB::table('telemetry_hourly')->sum('samples'));
     }
 
     public function test_hourly_aggregates_are_additive(): void

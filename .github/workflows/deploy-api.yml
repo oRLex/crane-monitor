@@ -1,0 +1,42 @@
+name: Deploy API
+
+# Deploys api/ to Wasmer Edge after CI passes on master. Inactive until the repository
+# variable WASMER_OWNER and the secret WASMER_TOKEN are set (see api/deploy/wasmer/README.md).
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: vars.WASMER_OWNER != '' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: pdo_pgsql, sockets, bcmath, pcntl
+          coverage: none
+      - run: composer config platform-check false && composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+      - name: Install Wasmer
+        run: |
+          mkdir -p "$HOME/.wasmer"
+          curl -fsSL https://github.com/wasmerio/wasmer/releases/download/v7.5.0/wasmer-linux-amd64.tar.gz | tar -xz -C "$HOME/.wasmer" bin/wasmer
+          echo "$HOME/.wasmer/bin" >> "$GITHUB_PATH"
+      # Runs the pre-deployment `migrate` job from app.yaml.
+      - run: wasmer deploy --non-interactive --owner "$WASMER_OWNER"
+        env:
+          WASMER_TOKEN: ${{ secrets.WASMER_TOKEN }}
+          WASMER_OWNER: ${{ vars.WASMER_OWNER }}

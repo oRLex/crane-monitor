@@ -2,6 +2,8 @@
 
 namespace App\Telemetry;
 
+use App\Support\EpochMs;
+
 /**
  * Generates plausible crane telemetry: lift cycles (hoist -> travel -> lower -> idle),
  * per-site gusty wind, occasional near-overload lifts and connectivity drop-outs.
@@ -28,7 +30,7 @@ final class Simulator
         ?int $seed = null,
         private readonly float $dropoutChance = 0.002,
     ) {
-        $this->rand = new Random($seed ?? (int) (microtime(true) * 1000));
+        $this->rand = new Random($seed ?? random_int(0, 0x7FFFFFFF));
         foreach ($cranes as $crane) {
             $this->states[$crane->id] = [
                 'phase' => 'idle',
@@ -49,9 +51,9 @@ final class Simulator
     }
 
     /** @return list<TelemetryPoint> */
-    public function tick(?int $ts = null): array
+    public function tick(?float $ts = null): array
     {
-        $ts ??= (int) (microtime(true) * 1000);
+        $ts ??= EpochMs::now();
         foreach ($this->wind as $siteId => $w) {
             // Mean-reverting random walk with rare strong gusts.
             $gust = $this->rand->next() < 0.01 ? 8 + $this->rand->next() * 8 : 0;
@@ -61,7 +63,7 @@ final class Simulator
         return array_values(array_map(fn (CraneSpec $c) => $this->step($c, $ts), $this->cranes));
     }
 
-    private function step(CraneSpec $crane, int $ts): TelemetryPoint
+    private function step(CraneSpec $crane, float $ts): TelemetryPoint
     {
         $s = &$this->states[$crane->id];
         $windMs = Random::round($this->wind[$crane->siteId] ?? 0);
@@ -110,7 +112,7 @@ final class Simulator
     }
 
     /** @param array{phase: string, phaseTicks: int, loadT: float, targetLoadT: float, radiusM: float, targetRadiusM: float, slewDeg: float, targetSlewDeg: float, hookHeightM: float, offlineTicks: int} $s */
-    private function point(CraneSpec $crane, array $s, int $ts, float $windMs): TelemetryPoint
+    private function point(CraneSpec $crane, array $s, float $ts, float $windMs): TelemetryPoint
     {
         $loadT = Random::round(max(0, $s['loadT']), 2);
         $radiusM = Random::round($s['radiusM']);

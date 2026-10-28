@@ -7,6 +7,7 @@ use App\Models\Site;
 use App\Models\TelemetryHourly;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Support\EpochMs;
 use App\Telemetry\CraneSpec;
 use App\Telemetry\HourlyAggregator;
 use App\Telemetry\Simulator;
@@ -76,8 +77,8 @@ class DatabaseSeeder extends Seeder
         $sim = new Simulator($cranes, seed: 2026, dropoutChance: 0.0008);
         $processor = new TelemetryProcessor(app(TelemetryStore::class), new HourlyAggregator($stepMs), broadcast: false);
 
-        $start = now()->subHours($hours)->getTimestampMs();
-        $end = now()->getTimestampMs();
+        $start = EpochMs::of(now()->subHours($hours));
+        $end = EpochMs::of(now());
         for ($ts = $start; $ts <= $end; $ts += $stepMs) {
             $processor->process($sim->tick($ts));
         }

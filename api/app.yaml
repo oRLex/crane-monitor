@@ -1,0 +1,59 @@
+# Wasmer Edge app (see deploy/wasmer/README.md). The owner comes from WASMER_OWNER.
+# Secrets are NOT here: set them with `deploy/wasmer/wasmer.sh app secrets create NAME VALUE`
+# (APP_KEY, APP_URL, FRONTEND_URL, DB_URL, PUSHER_*, optional ANTHROPIC_API_KEY / VOYAGE_API_KEY).
+kind: wasmer.io/App.v0
+name: cranewatch-api
+package: .
+
+env:
+  APP_NAME: CraneWatch
+  APP_ENV: production
+  APP_DEBUG: "false"
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: info
+  # Supabase Postgres (pgvector) via DB_URL; cache and queue live there too (no phpredis on Wasmer).
+  DB_CONNECTION: pgsql
+  CACHE_STORE: database
+  QUEUE_CONNECTION: database
+  SESSION_DRIVER: array
+  # Pusher Channels (Reverb can't run on Wasmer; same protocol for the web client).
+  BROADCAST_CONNECTION: pusher
+  # No long-running processes or RabbitMQ: a cron job simulates telemetry in-process.
+  # 5 s ticks keep broadcasts within Pusher's free daily message quota.
+  TELEMETRY_BUS: sync
+  TELEMETRY_TICK_MS: "5000"
+  AI_MODEL: claude-opus-5-5
+  AI_EFFORT: low
+  VOYAGE_MODEL: voyage-3.5
+
+health_checks:
+  - http:
+      path: /api/health
+      expected_status_codes: [200]
+
+jobs:
+  - name: migrate
+    trigger: pre-deployment
+    action:
+      execute:
+        command: artisan
+        cli_args: ["migrate", "--force"]
+        timeout: 300s
+
+  # Queue worker in short runs: Horizon needs Redis and a long-lived process.
+  - name: queue
+    trigger: '* * * * *'
+    action:
+      execute:
+        command: artisan
+        cli_args: ["queue:work", "--queue=ai,default", "--stop-when-empty", "--max-time=150", "--tries=3"]
+        timeout: 170s
+
+  # Demo telemetry: 11 ticks of 5 s per minute.
+  - name: telemetry
+    trigger: '* * * * *'
+    action:
+      execute:
+        command: artisan
+        cli_args: ["telemetry:simulate", "--ticks=11"]
+        timeout: 90s

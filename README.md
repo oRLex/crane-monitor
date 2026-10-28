@@ -2,7 +2,7 @@
 
 A production-shaped B2B slice: live crane telemetry, alarms, HLS video and multi-tenant access control — plus AI features built the way they need to work in production: grounded in tenant-scoped data, cited, validated, budgeted and measurable.
 
-**Stack:** Laravel 13 API (PHP 8.3+, Sanctum, Reverb, Horizon, `laravel/mcp`, official Anthropic PHP SDK) · PostgreSQL + pgvector · Redis · RabbitMQ · Next.js 15 / React 19 / Tailwind v4 · PHPUnit, Larastan, Pint, Vitest · Docker, GitHub Actions. Deploy targets: **Laravel Cloud** (API) and **Vercel** (web).
+**Stack:** Laravel 13 API (PHP 8.3+, Sanctum, Reverb, Horizon, `laravel/mcp`, official Anthropic PHP SDK) · PostgreSQL + pgvector · Redis · RabbitMQ · Next.js 15 / React 19 / Tailwind v4 · PHPUnit, Larastan, Pint, Vitest · Docker, GitHub Actions. Deploy targets: **Wasmer Edge** + **Supabase** + **Pusher** (API) and **Vercel** (web).
 
 | Fleet overview | Crane detail |
 | --- | --- |
@@ -134,26 +134,27 @@ Personal overrides go in `.claude/settings.local.json` and `CLAUDE.local.md` (gi
 
 ## Deploy
 
-**API → Laravel Cloud.** Point the app at this repository with `api/` as the application root (if the root can't be set in your plan, move `api/` to the repo root — nothing in it depends on its location). Resources: Serverless Postgres (enable `vector`), Key-Value store (Redis-compatible), Reverb WebSocket cluster. RabbitMQ isn't a managed resource there: use CloudAMQP and set `RABBITMQ_URL=amqps://…`, or run with `TELEMETRY_BUS=sync`.
-- Deploy commands: `php artisan migrate --force`, `php artisan db:seed --force`, `php artisan knowledge:ingest`
-- Background processes: `php artisan horizon`, `php artisan telemetry:consume`, `php artisan telemetry:simulate`
-- Env: `APP_KEY`, `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY` (optional), `AI_DAILY_TOKEN_BUDGET`, `RABBITMQ_URL`, `TELEMETRY_BUS`; DB/KV/Reverb variables are injected by the resources.
+Fully on free tiers: **API → Wasmer Edge**, **Postgres + pgvector → Supabase** (also cache and queue), **WebSockets → Pusher Channels**, **web → Vercel**. Step-by-step setup: [`api/deploy/wasmer/README.md`](api/deploy/wasmer/README.md); trade-offs: [ADR 006](docs/adr/006-wasmer-supabase-pusher.md).
 
-**Web → Vercel.** Root directory `web`. Env: `API_URL=https://<app>.laravel.cloud/api`, `NEXT_PUBLIC_REVERB_KEY/HOST/PORT/SCHEME` from the Reverb cluster. The browser only talks to Vercel (pages + `/api/backend/*` proxy) and to Reverb, so the API needs no CORS.
+- Wasmer runs PHP as 32-bit WebAssembly with no long-running processes, no Redis and no sockets. So: queue worker and telemetry simulator are per-minute cron jobs in `api/app.yaml`, cache and queue live in Postgres, RabbitMQ/Horizon/Reverb stay local-only. CI job `api-wasm32` runs the test suite on that runtime.
+- API secrets (Wasmer): `APP_KEY`, `APP_URL`, `FRONTEND_URL`, `DB_URL` (Supabase session pooler), `PUSHER_APP_ID/KEY/SECRET/CLUSTER`, optional `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`. Non-secret env is in `api/app.yaml`.
+- Web (Vercel, root `web`): `API_URL=https://<api>/api`, `NEXT_PUBLIC_REVERB_KEY=<pusher key>`, `NEXT_PUBLIC_REVERB_HOST=ws-<cluster>.pusher.com`, `NEXT_PUBLIC_REVERB_PORT=443`, `NEXT_PUBLIC_REVERB_SCHEME=https`. The browser only talks to Vercel (pages + `/api/backend/*` proxy) and to Pusher, so the API needs no CORS.
+- CD: `.github/workflows/deploy-api.yml` deploys the API after green CI on `master` (needs repo variable `WASMER_OWNER` and secret `WASMER_TOKEN`); Vercel deploys the web via its Git integration.
 
 Troubleshooting:
 
 | Symptom | Check |
 | --- | --- |
-| Stuck on "Connecting…", no Live badge | Vercel domain missing from the Reverb app's **Allowed origins**, or wrong `NEXT_PUBLIC_REVERB_*` |
-| Live, but values don't change | `telemetry:simulate` not running, or the app cluster is hibernating |
-| Reports/documents stay `queued`/`pending` | No `horizon` process, or `QUEUE_CONNECTION` isn't `redis` |
-| Postgres `too many clients` | Use the `-pooler` host in `DB_HOST` |
+| Stuck on "Connecting…", no Live badge | `NEXT_PUBLIC_REVERB_*` on Vercel vs `PUSHER_*` on Wasmer (key, `ws-<cluster>` host), Pusher daily quota |
+| Live, but values don't change | Wasmer `telemetry` job failing (app → Jobs/Logs) |
+| Reports/documents stay `queued`/`pending` for more than ~1 min | Wasmer `queue` job failing; `failed_jobs` table |
+| `could not find driver` | `php/php` in `wasmer.toml` older than 8.3.403 |
+| DB connection timeouts | `DB_URL` must be the Supabase **session pooler** (IPv4), not the direct host |
+| Dates around January 1970 | Code using `int` for epoch ms — use `App\Support\EpochMs` (32-bit PHP) |
 | Vercel: `NEXT_NO_VERSION` | Root Directory isn't set to `web` |
-| Background processes run twice | App cluster has more than one replica — background processes run on every replica |
 
 ## After launch
 
-What to watch: the **AI usage** page (cost per tenant, cache hit rate, p95 latency, `refusal`/`max_tokens` stop reasons), failed jobs in Horizon (reports that didn't validate, ingestion failures), and `ai.tool` log lines (tool, user, ok, ms). Before changing a prompt, tool description, chunking or model, run `php artisan ai:eval` and compare.
+What to watch: the **AI usage** page (cost per tenant, cache hit rate, p95 latency, `refusal`/`max_tokens` stop reasons), failed jobs (`failed_jobs`: reports that didn't validate, ingestion failures), and `ai.tool` log lines (tool, user, ok, ms). Before changing a prompt, tool description, chunking or model, run `php artisan ai:eval` and compare.
 
 Known limits / next steps: alarm hysteresis (wind hovering around a threshold raises and clears repeatedly — visible in the seeded history), Entra ID/OIDC instead of the demo sign-in, a time-series store for raw telemetry, multi-consumer processing (the consumer caches open alarms in memory), Playwright E2E for the role matrix, and an LLM-graded eval with a real key.

@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Domain\AlarmKind;
 use App\Domain\Severity;
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\EpochMs;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
@@ -61,7 +62,7 @@ class Alarm extends Model
     /**
      * Wire format shared by REST, broadcasts and AI tools (epoch ms, like the telemetry).
      *
-     * @return array{id: string, craneId: string, kind: string, severity: string, message: string, raisedAt: int, clearedAt: int|null, acknowledgedAt: int|null, acknowledgedBy: string|null}
+     * @return array{id: string, craneId: string, kind: string, severity: string, message: string, raisedAt: float, clearedAt: float|null, acknowledgedAt: float|null, acknowledgedBy: string|null}
      */
     public function toWire(): array
     {
@@ -71,9 +72,9 @@ class Alarm extends Model
             'kind' => $this->kind->value,
             'severity' => $this->severity->value,
             'message' => $this->message,
-            'raisedAt' => $this->raised_at->getTimestampMs(),
-            'clearedAt' => $this->cleared_at?->getTimestampMs(),
-            'acknowledgedAt' => $this->acknowledged_at?->getTimestampMs(),
+            'raisedAt' => EpochMs::of($this->raised_at),
+            'clearedAt' => $this->cleared_at ? EpochMs::of($this->cleared_at) : null,
+            'acknowledgedAt' => $this->acknowledged_at ? EpochMs::of($this->acknowledged_at) : null,
             'acknowledgedBy' => $this->acknowledged_by,
         ];
     }

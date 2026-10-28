@@ -51,7 +51,7 @@ class FleetTools
     public function point(TelemetryPoint $p): array
     {
         return [
-            'at' => date('c', intdiv($p->ts, 1000)),
+            'at' => date('c', (int) floor($p->ts / 1000)),
             'online' => $p->online,
             'load_t' => $p->loadT,
             'radius_m' => $p->radiusM,

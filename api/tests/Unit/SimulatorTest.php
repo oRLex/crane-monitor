@@ -28,6 +28,14 @@ class SimulatorTest extends TestCase
         }
     }
 
+    public function test_ticks_default_to_now_in_epoch_ms(): void
+    {
+        $point = (new Simulator($this->cranes(), 42))->tick()[0];
+
+        // Epoch ms don't fit a 32-bit int (Wasmer's PHP); an overflow lands in January 1970.
+        $this->assertEqualsWithDelta(microtime(true) * 1000, $point->ts, 5000);
+    }
+
     public function test_deterministic_for_a_seed(): void
     {
         $a = new Simulator($this->cranes(), 42);

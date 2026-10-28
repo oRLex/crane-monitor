@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Crane;
+use App\Telemetry\Bus\SyncBus;
 use App\Telemetry\Bus\TelemetryBus;
 use App\Telemetry\CraneSpec;
 use App\Telemetry\Simulator;
@@ -31,6 +32,12 @@ class SimulateTelemetry extends Command
             if ($sleep > 0) {
                 usleep($sleep);
             }
+        }
+
+        // A bounded run (e.g. the per-minute cron job on Wasmer) ends here: in-process
+        // aggregates would be lost otherwise. With RabbitMQ the consumer owns them.
+        if ($bus instanceof SyncBus) {
+            $bus->flush();
         }
 
         return self::SUCCESS;

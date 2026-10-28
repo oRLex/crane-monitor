@@ -26,3 +26,6 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 .env.docker
+
+# Wasmer Edge local env (deploy/wasmer/wasmer.sh)
+/deploy/wasmer/local.env

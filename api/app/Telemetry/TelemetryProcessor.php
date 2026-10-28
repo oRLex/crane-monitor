@@ -23,7 +23,7 @@ class TelemetryProcessor
     /** @var array<string, string> crane id -> tenant id */
     private array $tenantOf;
 
-    private int $lastFlush = 0;
+    private float $lastFlush = 0;
 
     public function __construct(
         private readonly TelemetryStore $store,
