@@ -6,6 +6,7 @@ use App\Events\AlarmChanged;
 use App\Events\TelemetryBatch;
 use App\Models\Alarm;
 use App\Models\Crane;
+use App\Support\EpochMs;
 use App\Telemetry\Bus\TelemetryBus;
 use App\Telemetry\TelemetryPoint;
 use App\Telemetry\TelemetryProcessor;
@@ -17,7 +18,7 @@ use Tests\TestCase;
 
 class TelemetryPipelineTest extends TestCase
 {
-    private function point(string $crane, int $ts, array $over = []): TelemetryPoint
+    private function point(string $crane, float $ts, array $over = []): TelemetryPoint
     {
         return TelemetryPoint::fromArray($over + [
             'craneId' => $crane, 'ts' => $ts, 'loadT' => 2, 'radiusM' => 20, 'loadMomentPct' => 40,
@@ -29,7 +30,7 @@ class TelemetryPipelineTest extends TestCase
     {
         Event::fake([TelemetryBatch::class, AlarmChanged::class]);
         $bus = app(TelemetryBus::class);
-        $t = now()->getTimestampMs();
+        $t = EpochMs::now();
 
         $bus->publish([$this->point('c-101', $t, ['windMs' => 21]), $this->point('c-201', $t)]);
         $bus->publish([$this->point('c-101', $t + 1000, ['windMs' => 21]), $this->point('c-201', $t + 1000)]);
@@ -86,7 +87,7 @@ class TelemetryPipelineTest extends TestCase
     {
         Event::fake();
         $processor = app(TelemetryProcessor::class);
-        $hour = now()->startOfHour()->getTimestampMs();
+        $hour = EpochMs::of(now()->startOfHour());
         $processor->process([$this->point('c-101', $hour, ['windMs' => 10, 'loadT' => 3])]);
         $processor->flush();
         $processor->process([$this->point('c-101', $hour + 1000, ['windMs' => 12, 'online' => false])]);

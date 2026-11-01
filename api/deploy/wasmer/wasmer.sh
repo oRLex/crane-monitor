@@ -4,8 +4,8 @@
 #   deploy/wasmer/wasmer.sh login                 # once; paste a token from wasmer.io/settings/access-tokens
 #   deploy/wasmer/wasmer.sh run . --net --env-file /local.env   # try the bundle locally on :8080
 #   WASMER_OWNER=<namespace> deploy/wasmer/wasmer.sh deploy   # build the bundle and deploy to Wasmer Edge
-#   deploy/wasmer/wasmer.sh app secrets create APP_KEY base64:...
 #   deploy/wasmer/wasmer.sh test [phpunit args]   # tests on the Wasmer PHP runtime (32-bit); default: Unit suite
+#                                                 # (Feature tests need `docker compose up -d postgres`)
 #
 # `run` and `deploy` first build a clean bundle inside the container: tracked and
 # untracked-not-ignored files only (so never .env), `composer install --no-dev`.
@@ -46,7 +46,11 @@ case "${1:-}" in
     build=$(build "")
     shift
     [ $# -eq 0 ] && set -- --testsuite Unit
-    set -- run "$php_pkg" --volume /build:/app -- /app/vendor/bin/phpunit -c /app/phpunit.xml --do-not-cache-result "$@"
+    # Feature tests use the compose Postgres (localhost:5433) unless DB_* say otherwise.
+    set -- run "$php_pkg" --net --volume /build:/app \
+      --env "DB_HOST=${DB_HOST:-host.docker.internal}" --env "DB_PORT=${DB_PORT:-5433}" \
+      --env "DB_USERNAME=${DB_USERNAME:-postgres}" --env "DB_PASSWORD=${DB_PASSWORD:-postgres}" \
+      -- /app/vendor/bin/phpunit -c /app/phpunit.xml --do-not-cache-result "$@"
     ;;
   *) build=true ;;
 esac
