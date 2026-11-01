@@ -2,7 +2,7 @@
 
 namespace App\Telemetry;
 
-use Illuminate\Support\Carbon;
+use App\Support\EpochMs;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -21,7 +21,7 @@ class HourlyAggregator
 
     public function add(TelemetryPoint $p): void
     {
-        $hour = Carbon::createFromTimestampMs($p->ts)->startOfHour()->toDateTimeString();
+        $hour = EpochMs::toDate($p->ts)->startOfHour()->toDateTimeString();
         $key = "{$p->craneId}|{$hour}";
         $b = $this->buckets[$key] ??= [
             'crane_id' => $p->craneId, 'hour' => $hour, 'max_load_t' => 0.0, 'max_moment_pct' => 0.0,

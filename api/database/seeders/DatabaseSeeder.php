@@ -14,6 +14,7 @@ use App\Telemetry\Simulator;
 use App\Telemetry\TelemetryProcessor;
 use App\Telemetry\TelemetryStore;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class DatabaseSeeder extends Seeder
 {
@@ -67,21 +68,31 @@ class DatabaseSeeder extends Seeder
     /**
      * Replays the last 12 hours through the real processor (10 s ticks, no broadcasts) so
      * reports, the assistant and the alarm list have history right after deploy.
+     *
+     * The live window is kept in memory and written once (with a remote database as the
+     * cache store, per-tick writes take hours), and everything runs in one transaction so
+     * a failed run leaves nothing behind for the idempotency guard to trip over.
      */
-    private function replayHistory(int $hours = 12, int $stepMs = 10_000): void
+    public function replayHistory(int $hours = 12, int $stepMs = 10_000): void
     {
         if (TelemetryHourly::query()->exists()) {
             return; // idempotent: deploys re-run the seeder
         }
         $cranes = Crane::query()->orderBy('id')->get()->map(CraneSpec::fromModel(...))->values()->all();
-        $sim = new Simulator($cranes, seed: 2026, dropoutChance: 0.0008);
-        $processor = new TelemetryProcessor(app(TelemetryStore::class), new HourlyAggregator($stepMs), broadcast: false);
+        $window = new TelemetryStore((int) config('telemetry.history_points'), 'array');
 
-        $start = EpochMs::of(now()->subHours($hours));
-        $end = EpochMs::of(now());
-        for ($ts = $start; $ts <= $end; $ts += $stepMs) {
-            $processor->process($sim->tick($ts));
-        }
-        $processor->flush();
+        DB::transaction(function () use ($cranes, $window, $hours, $stepMs) {
+            $sim = new Simulator($cranes, seed: 2026, dropoutChance: 0.0008);
+            $processor = new TelemetryProcessor($window, new HourlyAggregator($stepMs), broadcast: false);
+
+            $start = EpochMs::of(now()->subHours($hours));
+            $end = EpochMs::of(now());
+            for ($ts = $start; $ts <= $end; $ts += $stepMs) {
+                $processor->process($sim->tick($ts));
+            }
+            $processor->flush();
+        });
+
+        app(TelemetryStore::class)->copyFrom($window, array_values(array_map(fn (CraneSpec $c) => $c->id, $cranes)));
     }
 }

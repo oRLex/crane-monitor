@@ -45,20 +45,26 @@ deploy/wasmer/wasmer.sh login
 deploy/wasmer/wasmer.sh deploy    # creates the app; its `migrate` job fails until DB_URL is set
 ```
 
-Then set the secrets in the Wasmer dashboard (app → Settings → Secrets), or with the CLI
-(values typed on the command line end up in shell history):
+Then set the secrets in the Wasmer dashboard (app → Settings → Secrets) and deploy again.
+Collect them in `deploy/wasmer/secrets.env` (gitignored, like every `deploy/wasmer/*.env`) so
+nothing has to be typed on a command line:
 
-```bash
-s() { deploy/wasmer/wasmer.sh app secrets create --app "$WASMER_OWNER/cranewatch-api" "$1" "$2"; }
-s APP_KEY "$(php artisan key:generate --show)"
-s APP_URL https://<app>.wasmer.app                          # the URL the first deploy printed
-s FRONTEND_URL https://<web>.vercel.app
-s DB_URL "postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require"
-s PUSHER_APP_ID ...; s PUSHER_APP_KEY ...; s PUSHER_APP_SECRET ...; s PUSHER_APP_CLUSTER eu
-s ANTHROPIC_API_KEY ...   # optional: mock LLM without it
-s VOYAGE_API_KEY ...      # optional: hashed embeddings without it
-deploy/wasmer/wasmer.sh deploy
+```dotenv
+APP_KEY=base64:...        # php artisan key:generate --show
+APP_URL=https://<app>.wasmer.app                             # the URL the first deploy printed
+FRONTEND_URL=https://<web>.vercel.app
+DB_URL=postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+PUSHER_APP_ID=...
+PUSHER_APP_KEY=...
+PUSHER_APP_SECRET=...
+PUSHER_APP_CLUSTER=eu
+ANTHROPIC_API_KEY=...     # optional: mock LLM without it
+VOYAGE_API_KEY=...        # optional: hashed embeddings without it
 ```
+
+`wasmer app secrets create --from-file` would take that file directly, but CLI 7.5.0 answers
+"app not found" for every `app secrets` command, so use the dashboard. Special characters in the
+database password must be percent-encoded in `DB_URL` (`@` → `%40`, `#` → `%23`).
 
 The pre-deployment `migrate` job runs on every deploy.
 

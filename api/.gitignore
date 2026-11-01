@@ -28,4 +28,4 @@ Thumbs.db
 .env.docker
 
 # Wasmer Edge local env (deploy/wasmer/wasmer.sh)
-/deploy/wasmer/local.env
+/deploy/wasmer/*.env

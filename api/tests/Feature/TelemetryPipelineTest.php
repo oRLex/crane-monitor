@@ -9,6 +9,8 @@ use App\Models\Crane;
 use App\Telemetry\Bus\TelemetryBus;
 use App\Telemetry\TelemetryPoint;
 use App\Telemetry\TelemetryProcessor;
+use App\Telemetry\TelemetryStore;
+use Database\Seeders\DatabaseSeeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
@@ -64,6 +66,22 @@ class TelemetryPipelineTest extends TestCase
         $this->assertSame(3 * Crane::query()->count(), (int) DB::table('telemetry_hourly')->sum('samples'));
     }
 
+    public function test_history_replay_fills_aggregates_and_the_live_window_once(): void
+    {
+        Event::fake();
+        $seeder = app(DatabaseSeeder::class);
+
+        $seeder->replayHistory(hours: 1);
+        $samples = (int) DB::table('telemetry_hourly')->sum('samples');
+        $seeder->replayHistory(hours: 1);
+
+        $this->assertSame(361 * Crane::query()->count(), $samples, '1 h of 10 s ticks, both ends included');
+        $this->assertSame($samples, (int) DB::table('telemetry_hourly')->sum('samples'), 'a second run is a no-op');
+        $store = app(TelemetryStore::class);
+        $this->assertCount((int) config('telemetry.history_points'), $store->history('c-101'));
+        $this->assertNotNull($store->latest('c-202'));
+    }
+
     public function test_hourly_aggregates_are_additive(): void
     {
         Event::fake();
@@ -75,6 +93,7 @@ class TelemetryPipelineTest extends TestCase
         $processor->flush();
 
         $row = DB::table('telemetry_hourly')->where('crane_id', 'c-101')->first();
+        $this->assertSame(now()->startOfHour()->toDateTimeString(), $row->hour); // not 1970 on 32-bit PHP
         $this->assertSame(2, $row->samples);
         $this->assertEquals(12, $row->max_wind_ms);
         $this->assertSame(1, $row->operating_s);

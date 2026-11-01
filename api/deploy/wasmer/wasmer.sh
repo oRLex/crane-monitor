@@ -32,7 +32,11 @@ build() {
 php_pkg="php/php@$(sed -n 's/^"php\/php" = "=\([^"]*\)".*/\1/p' "$api/wasmer.toml")"
 
 case "${1:-}" in
-  run) build=$(build --no-dev) ;;
+  run)
+    build=$(build --no-dev)
+    # Publish :8080 only when serving, so artisan runs (`--command artisan`) can run alongside.
+    [[ " $* " == *" --command "* ]] || opts+=(-p 8080:8080)
+    ;;
   deploy)
     build=$(build --no-dev)
     : "${WASMER_OWNER:?set WASMER_OWNER to your Wasmer username or namespace}"
@@ -49,5 +53,5 @@ esac
 
 exec docker run --rm ${opts[@]+"${opts[@]}"} --platform linux/amd64 \
   -v "$HOME/.wasmer-docker:/root/.wasmer" -v "$repo:/src:ro" \
-  -p 8080:8080 --add-host=host.docker.internal:host-gateway \
+  --add-host=host.docker.internal:host-gateway \
   --entrypoint sh "$image" -c "$build && exec wasmer \"\$@\"" wasmer "$@"

@@ -6,7 +6,7 @@ use App\Events\AlarmChanged;
 use App\Events\TelemetryBatch;
 use App\Models\Alarm;
 use App\Models\Crane;
-use Illuminate\Support\Carbon;
+use App\Support\EpochMs;
 
 /**
  * Consumer side of the telemetry bus: evaluates alarm rules, persists alarm changes,
@@ -86,7 +86,7 @@ class TelemetryProcessor
             return [];
         }
 
-        $at = Carbon::createFromTimestampMs($p->ts);
+        $at = EpochMs::toDate($p->ts);
         $changed = [];
         $clearIds = array_map(fn (OpenAlarm $a) => $a->id, $clear);
         if ($clearIds !== []) {

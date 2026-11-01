@@ -28,6 +28,20 @@ class TelemetryStore
         $this->cache->forever('telemetry:latest', $latest);
     }
 
+    /**
+     * Takes over another store's window, one write per key. Bulk replays fill an in-memory
+     * store and copy it here once: the database cache store costs a round trip per write.
+     *
+     * @param  list<string>  $craneIds
+     */
+    public function copyFrom(self $other, array $craneIds): void
+    {
+        foreach ($craneIds as $id) {
+            $this->cache->forever("telemetry:history:{$id}", $other->cache->get("telemetry:history:{$id}", []));
+        }
+        $this->cache->forever('telemetry:latest', $other->cache->get('telemetry:latest', []));
+    }
+
     public function latest(string $craneId): ?TelemetryPoint
     {
         $row = $this->cache->get('telemetry:latest', [])[$craneId] ?? null;

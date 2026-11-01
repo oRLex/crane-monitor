@@ -26,34 +26,36 @@ env:
   AI_EFFORT: low
   VOYAGE_MODEL: voyage-3.5
 
+# Enum variants need a YAML tag (`!http`): Wasmer parses app.yaml via serde_yaml::Value.
 health_checks:
-  - http:
-      path: /api/health
-      expected_status_codes: [200]
+  - !http
+    path: /api/health
+    expect:
+      status_codes: [200]
 
 jobs:
   - name: migrate
     trigger: pre-deployment
+    timeout: 300s
     action:
       execute:
         command: artisan
         cli_args: ["migrate", "--force"]
-        timeout: 300s
 
   # Queue worker in short runs: Horizon needs Redis and a long-lived process.
   - name: queue
     trigger: '* * * * *'
+    timeout: 170s
     action:
       execute:
         command: artisan
         cli_args: ["queue:work", "--queue=ai,default", "--stop-when-empty", "--max-time=150", "--tries=3"]
-        timeout: 170s
 
   # Demo telemetry: 11 ticks of 5 s per minute.
   - name: telemetry
     trigger: '* * * * *'
+    timeout: 90s
     action:
       execute:
         command: artisan
         cli_args: ["telemetry:simulate", "--ticks=11"]
-        timeout: 90s
